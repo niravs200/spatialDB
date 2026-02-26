@@ -11,22 +11,20 @@ mod tests {
 
         #[test]
         fn record_peek() {
-            let id = "record_001".to_string();
             let data = json!({
                 "health": 50.0
             });
-            let record: Record = Record::new(id.clone(), data.clone());
+            let record: Record = Record::new(data.clone());
             let peek_data = record.peek();
             assert_eq!(peek_data, data);
         }
 
         #[test]
         fn record_commit() {
-            let id = "record_001".to_string();
             let data = json!({
                 "health": 50.0
             });
-            let record: Record = Record::new(id.clone(), data.clone());
+            let record: Record = Record::new(data.clone());
             let new_data = json!({
                 "health": 100.0
             });
@@ -50,7 +48,7 @@ mod tests {
                 "health": 50.0
             });
             let shard = Shard::new();
-            shard.add(id.clone(), data.clone());
+            shard.add(&id.to_string(), data.clone());
             let fetched_option = shard.get(&id);
             let fetched_record = fetched_option.unwrap().peek();
             assert_eq!(fetched_record, data)
@@ -63,7 +61,7 @@ mod tests {
                 "health": 50.0
             });
             let shard = Shard::new();
-            shard.add(id.clone(), data.clone());
+            shard.add(&id.to_string(), data.clone());
             let fetched_option = shard.get(&id);
             let fetched_record = fetched_option.unwrap().peek();
             assert_eq!(fetched_record, data);
@@ -83,7 +81,7 @@ mod tests {
                 "health": 50.0
             });
             let shard = Shard::new();
-            shard.add(id.clone(), data.clone());
+            shard.add(&id.to_string(), data.clone());
             let fetched_option = shard.get(&id);
             let fetched_record = fetched_option.unwrap().peek();
             assert_eq!(fetched_record, data);
@@ -101,8 +99,8 @@ mod tests {
                 "health": 50.0
             });
             let shard = Shard::new();
-            shard.add(id.clone(), data.clone());
-            shard.add(id2.clone(), data.clone());
+            shard.add(&id.to_string(), data.clone());
+            shard.add(&id2.to_string(), data.clone());
 
             let mut ids = shard.get_ids();
             ids.sort();
@@ -121,8 +119,8 @@ mod tests {
                 "health": 50.0
             });
             let shard = Shard::new();
-            shard.add(id.clone(), data.clone());
-            shard.add(id2.clone(), data.clone());
+            shard.add(&id.to_string(), data.clone());
+            shard.add(&id2.to_string(), data.clone());
 
             let usage: usize = shard.get_usage();
             assert_eq!(usage, 2)

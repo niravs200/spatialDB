@@ -5,14 +5,12 @@ use std::sync::{Arc, RwLock};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Record {
-    pub id: String,
     pub data: RwLock<Value>,
 }
 
 impl Record {
-    pub fn new(id: String, data: Value) -> Self {
+    pub fn new(data: Value) -> Self {
         Record { 
-            id,
             data: RwLock::new(data)
         }
     } 
@@ -38,9 +36,9 @@ impl Shard {
         }
     }
 
-    pub fn add(&self, id: String, data: Value) {
-        let record: Arc<Record> = Arc::new(Record::new(id.clone(), data));
-        self.registry.insert(id, record);
+    pub fn add(&self, id: &str, data: Value) -> bool {
+        let record: Arc<Record> = Arc::new(Record::new(data));
+        self.registry.insert(id.to_string(), record).is_none()
     }
 
     pub fn get(&self, id: &str) -> Option<Arc<Record>> {
@@ -67,7 +65,7 @@ impl Shard {
         }
     }
 
-    pub fn delete(&self, id: &str) {
-        self.registry.remove(id);
+    pub fn delete(&self, id: &str) -> bool {
+        self.registry.remove(id).is_some()
     }
 }

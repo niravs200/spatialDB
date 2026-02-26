@@ -164,6 +164,7 @@ name = "lookup-latency-test"
 version = "0.1.0"
 dependencies = [
  "dashmap",
+ "once_cell",
  "serde",
  "serde_json",
  "uuid",
