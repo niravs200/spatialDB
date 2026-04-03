@@ -1,0 +1,15 @@
+1. Just one server deployed locally (Can actually run things locally, migration in future to cloud would be easy)
+2. There should be some data stored on the server and it can be retrived updated via UDP socket connections 
+3. Implement a master server, it should be able to access the original server. Also make 3 more identical slave server. 
+4. Implement that master server can be consulted to send which server based on coordinates needs to be used. 
+5. Implement another migration server that will manage data sync when required between different slave server and notify the master server. This would contain the core algo for data movement based on co-ordinates. 
+6. The master server should be able to send out a notification to the client when client's slave server changes. 
+7. Implement a run-environment for rust, go and c++ in the slave server. Slave server will now receive just receive user input and this logic can be used to update the in-memory db. 
+8. Build SDK for in-memory db updates. 
+9. Build logic that sends out the delta of data back in the socket. 
+10. Build logic for slave server to receive user input and pass it to the environment. 
+11. Build another server that has common data and that also has the same capability as the slave server. Make sure the slave servers are able to send message to this common data server.
+12. Build API interface in go to send out health and other details of the slave server and master server. The APIs should be able to manage the servers. Also add health exposure capability to the server as necessary. 
+13. Build API interface and dashboard to view the data and continuously pull from it. 
+14. Build a bevy simulation to demonstrate how data will flow. (More details to come)
+15. Build unity plugins for connecting with the spatial DB (More details to come)

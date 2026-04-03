@@ -12,21 +12,21 @@ pub struct TraditionalLookUp {
 
 impl TraditionalLookUp {
     pub fn new(shard_count: usize) -> Self {
-        let registry = Self {
+        let db = Self {
             partitions: DashMap::with_capacity(shard_count),
             record_lookup: DashMap::new()
         };
 
         for i in 0..shard_count {
             let id = format!("shard_{}", i);
-            registry.partitions.insert(id, Arc::new(Shard::new()));
+            db.partitions.insert(id, Arc::new(Shard::new()));
         }
 
-        registry
+        db
     }
 
     pub fn insert_record(&self, shard_id: &str, record_id: &str, data: Value) -> bool {
-        if let Some(shard) = self.get_shard_by_record_id(record_id) {
+        if let Some(shard) = self.get_shard(shard_id) {
             let added_in_shard = shard.add(record_id, data);
             let added_in_lookup = self.record_lookup.insert(record_id.to_string(), shard_id.to_string()).is_none();
             added_in_shard || added_in_lookup
@@ -36,13 +36,18 @@ impl TraditionalLookUp {
     }
 
     pub fn get_record(&self, record_id: &str) -> Option<Arc<Record>> {
-        let shard = self.get_shard_by_record_id(record_id);
-        shard.unwrap().get(record_id)
+        if let Some(shard) = self.get_shard_by_record_id(record_id) {
+            shard.get(record_id)
+        } else {
+            None
+        }
     }
 
     pub fn update_record(&self, record_id: &str, data: Value) -> bool {
-        let shard = self.get_shard_by_record_id(record_id);
-        shard.unwrap().update(record_id, data)
+        match self.get_shard_by_record_id(record_id) {
+            Some(shard) => shard.update(record_id, data),
+            None => false,
+        }
     }
 
     pub fn delete_record(&self, record_id: &str) -> bool {
@@ -62,9 +67,9 @@ impl TraditionalLookUp {
     }
     
     pub fn get_shard_by_record_id(&self, record_id: &str) -> Option<Arc<Shard>> {
-        let shard_id = self.record_lookup.get(record_id);
-        let shard = self.get_shard(&shard_id.unwrap());
-        shard
+        let shard_ref = self.record_lookup.get(record_id)?; // early return None if missing
+        let shard_id: &str = shard_ref.as_ref(); 
+        self.get_shard(shard_id)
     }
     
     pub fn shard_ids(&self) -> Vec<String> {

@@ -1,0 +1,1 @@
+/home/niravsolanki/Desktop/Spatial\ DB\ /DB/master-node/target/debug/libmaster_node.rlib: /home/niravsolanki/Desktop/Spatial\ DB\ /DB/master-node/src/constant.rs /home/niravsolanki/Desktop/Spatial\ DB\ /DB/master-node/src/lib.rs /home/niravsolanki/Desktop/Spatial\ DB\ /DB/master-node/src/operations.rs /home/niravsolanki/Desktop/Spatial\ DB\ /DB/master-node/src/server.rs
