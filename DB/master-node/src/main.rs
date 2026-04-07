@@ -7,14 +7,21 @@ use std::io::{stdout, stdin, Write};
 use crate::operations::{check_status, kill_all_servers, spawn_servers};
 use crate::server::Server;
 
-fn main() {
-    let servers = Arc::new(Mutex::new(Vec::<Server>::new()));
-    let mut next_port: u16 = 7777;
 
+fn help() {
     println!("Commands");
     println!("  start <N>  -> start N servers");
     println!("  kill       -> kill all servers");
     println!("  status     -> Show status of all servers");
+    println!("  help       -> Print all the commands");
+}
+
+
+fn main() {
+    let servers = Arc::new(Mutex::new(Vec::<Server>::new()));
+    let mut next_port: u16 = 7777;
+
+    help();
 
 
     loop {
@@ -33,6 +40,12 @@ fn main() {
 
 
         match parts[0].to_lowercase().as_str() {
+
+            "help" => {
+                help();
+            }
+
+
             "start" => {
                 if parts.len() < 2 {
                     println!("Usage: start <number>");
@@ -60,11 +73,16 @@ fn main() {
                 check_status(&servers.lock().unwrap());
             }
 
+            "exit" => {
+                println!("Exiting gracefully!");
+                kill_all_servers(&mut servers.lock().unwrap());
+                break;
+            }
+
             _ => {
                 println!("Unknown command. Use 'start <N>' or 'kill'");
             }
         }
 
     }
-
 }
