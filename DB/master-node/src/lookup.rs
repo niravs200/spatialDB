@@ -68,67 +68,68 @@ impl Entry {
 }
 
 pub struct LookupTable {
-    entries: Vec<Entry>,
-    bounds: Option<BoundingBox>,
+    entries: Vec<Arc<RwLock<Entry>>>,
+    bounds: Arc<RwLock<Option<BoundingBox>>>,
 }
 
 impl LookupTable {
 
     pub fn new() -> Self {
-        Self { entries: Vec::new(), bounds: None }
+        Self { entries: Vec::new(), bounds: Arc::new(RwLock::new(None)) }
     }
 
     pub fn delete_all(&mut self) {
         self.entries.clear();
-        self.bounds = None;
+        self.bounds = Arc::new(RwLock::new(None));
     }
 
-    pub fn set(&mut self, entry: &Entry) -> bool {
+    pub fn set(&mut self, new_entry: &Entry) -> bool {
 
-        if let Some(bounds) = &self.bounds {
-            if bounds.intersects(&entry.bounds) {
-                println!("Boundary: {:?} conflicting with another entry", entry.bounds);
+        for entry in &self.entries {
+            if entry.read().unwrap().bounds.intersects(&new_entry.bounds) {
+                println!("Boundary: {:?} conflicting with another entry", new_entry.bounds);
                 return false
             }
         }
 
-
-        self.entries.push(entry.clone());
-        self.bounds = Some(match &self.bounds {
-            Some(b) => BoundingBox { 
-                min: b.min.min(&entry.bounds.min), 
-                max: b.max.max(&entry.bounds.max), 
+        self.entries.push(Arc::new(RwLock::new(new_entry.clone())));
+        
+        let mut bounds = self.bounds.write().unwrap();
+        *bounds = Some(match &*bounds {
+            Some(existing) => BoundingBox {
+                min: existing.min.min(&new_entry.bounds.min),
+                max: existing.max.max(&new_entry.bounds.max),
             },
-            None => entry.bounds.clone()
+            None => new_entry.bounds.clone(),
         });
-
-        println!("Overall boundary updated to {:?}", self.bounds);
 
         return true
     }
 
     pub fn get(&self, coordinate: Coordinate) -> Option<Entry> {
         
-        let bounds= match &self.bounds {
+        let bounds = self.bounds.read().unwrap();
+        match &*bounds {
+            Some(b) => {
+                if !b.contains(&coordinate) {
+                    println!("Coordinate is out of bound: {:?}", coordinate);
+                    return None
+                }
+            }
             None => {
-                println!("Coordinate: {:?} is out of bounds", coordinate);
+                println!("No entries has been initiated");
                 return  None;
-            },
-            Some(b) => b,
-        };
-
-        if !bounds.contains(&coordinate) {
-            println!("Coordinate {:?} is out of bounds", coordinate);
-            return None;
-        }
-
-        for entry in &self.entries {
-            if entry.bounds.contains(&coordinate) {
-                return Some(entry.clone());
             }
         }
 
-        println!("No entry found for {:?}", coordinate);
+        for entry_lock in &self.entries {
+            let entry = entry_lock.read().unwrap();
+
+            if entry.bounds.contains(&coordinate) {
+                return Some(entry.clone())
+            }
+        }
+
         None
     }
 }
