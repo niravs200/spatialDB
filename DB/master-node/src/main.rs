@@ -4,6 +4,8 @@ mod constant;
 
 use std::sync::{Arc, Mutex};
 use std::io::{stdout, stdin, Write};
+use master_node::lookup::{LookupTable};
+
 use crate::operations::{check_status, kill_all_servers, spawn_servers};
 use crate::server::Server;
 
@@ -20,6 +22,8 @@ fn help() {
 fn main() {
     let servers = Arc::new(Mutex::new(Vec::<Server>::new()));
     let mut next_port: u16 = 7777;
+
+    let lookupTable = LookupTable::new();
 
     help();
 
