@@ -1,29 +1,28 @@
 mod operations;
-mod server;
 mod constant;
+mod bound_box;
+mod lookup;
 
-use std::sync::{Arc, Mutex};
-use std::io::{stdout, stdin, Write};
-use master_node::lookup::{LookupTable};
+use std::{io::{Write, stdin, stdout}, sync::Arc};
+use crate::{bound_box::{BoundingBox, Coordinate}, lookup::LookupTable};
+use tokio::sync::RwLock;
 
-use crate::operations::{check_status, kill_all_servers, spawn_servers};
-use crate::server::Server;
-
+use crate::operations::{lookup_ports, check_status, kill_all_servers, spawn_servers};
 
 fn help() {
     println!("Commands");
-    println!("  start <N>  -> start N servers");
-    println!("  kill       -> kill all servers");
-    println!("  status     -> Show status of all servers");
-    println!("  help       -> Print all the commands");
+    println!("  start <N> -> start N servers");
+    println!("  kill -> kill all servers");
+    println!("  status -> Show status of all servers");
+    println!("  lookup -> Show connection details based on coordinates");
+    println!("  help -> Print all the commands");
 }
 
-
-fn main() {
-    let servers = Arc::new(Mutex::new(Vec::<Server>::new()));
+#[tokio::main]
+async fn main() {
     let mut next_port: u16 = 7777;
 
-    let lookupTable = LookupTable::new();
+    let lookup_table = Arc::new(RwLock::new(LookupTable::new()));
 
     help();
 
@@ -51,36 +50,131 @@ fn main() {
 
 
             "start" => {
-                if parts.len() < 2 {
-                    println!("Usage: start <number>");
-                    continue;
-                }
+               if parts.len() < 6 {
+                    println!("Usage: start <server-count> <left-coordinate> <top-coordinate> <right-coordinate> <bottom-coordinate>");
+                    continue
+               }
 
-                let count:usize = match parts[1].parse() {
-                    Ok(n) => n,
+               let server_count: usize = match parts[1].parse::<usize>() {
+                    Ok(v) if v % 4 == 0 => v,
+                    Ok(_) => {
+                        println!("server-count must be divisible by 4");
+                        continue;
+                    }
                     Err(_) => {
-                        println!("Invalid number");
+                        println!("Invalid server-count");
                         continue;
                     }
                 };
 
-                spawn_servers(&servers, count, &mut next_port);
+                let left_coordinate: f64 = match parts[2].parse() {
+                    Ok(v) => v,
+                    Err(_) => {
+                        println!("Invalid left coordinate");
+                        continue;
+                    }
+                };
+
+                let top_coordinate: f64 = match parts[3].parse() {
+                    Ok(v) => v,
+                    Err(_) => {
+                        println!("Invalid top coordinate");
+                        continue;
+                    }
+                };
+
+                let right_coordinate: f64 = match parts[4].parse() {
+                    Ok(v) if v > left_coordinate => v,
+                    Ok(_) => {
+                        println!("Right coordinate cannot be smaller then left coordinate");
+                        continue
+                    }
+                    Err(_) => {
+                        println!("Invalid right coordinate");
+                        continue;
+                    }
+                };
+
+                let bottom_coordinate: f64 = match parts[5].parse() {
+                    Ok(v) if v < top_coordinate => v,
+                    Ok(_) => {
+                        println!("Bottom coordinate cannot be bigger then top coordinate");
+                        continue
+                    }
+                    Err(_) => {
+                        println!("Invalid right coordinate");
+                        continue;
+                    }
+                };
+
+                let coordinate_boundary = BoundingBox::new(
+                    Coordinate::new(left_coordinate, top_coordinate),
+                    Coordinate::new(right_coordinate, bottom_coordinate),
+                );
+
+               match spawn_servers(
+                    lookup_table.clone(),
+                    coordinate_boundary,
+                    server_count,
+                    &mut next_port
+                ).await {
+                    Ok(_) => {}
+                    Err(e) => {
+                        eprintln!("Failed to spawn servers: {}", e);
+                        continue;
+                    }
+                }
             }
 
             "kill" => {
-                println!("Stopping all servers");
-                kill_all_servers(&mut servers.lock().unwrap());
+                println!("Starting server shutdown process");
+                if let Err(e) = kill_all_servers(lookup_table.clone()).await {
+                    eprintln!("Shutdown failed: {}", e);
+                } else {
+                    println!("All servers have been shutdown");
+                }
             }
 
             "status" => {
-                println!("Status of all Servers");
-                check_status(&servers.lock().unwrap());
+                println!("Fetching Status...");
+                check_status(lookup_table.clone()).await;
+            }
+
+            "lookup" => {
+                if parts.len() < 3 {
+                    println!("Usage: lookup <x> <y>");
+                    continue;
+                }
+
+                let x: f64 = match parts[1].parse() {
+                    Ok(v) => v,
+                    Err(_) => {
+                        println!("Invalid x coordinate");
+                        continue;
+                    }
+                };
+
+                let y: f64 = match parts[2].parse() {
+                    Ok(v) => v,
+                    Err(_) => {
+                        println!("Invalid y coordinate");
+                        continue;
+                    }
+                };
+
+                let coordinate = Coordinate { x, y };
+
+                lookup_ports(lookup_table.clone(), coordinate).await;
             }
 
             "exit" => {
-                println!("Exiting gracefully!");
-                kill_all_servers(&mut servers.lock().unwrap());
-                break;
+                println!("Starting server shutdown process");
+                if let Err(e) = kill_all_servers(lookup_table.clone()).await {
+                    eprintln!("Shutdown failed: {}", e);
+                } else {
+                    println!("All servers have been shutdown");
+                    println!("Exiting Program")
+                }
             }
 
             _ => {

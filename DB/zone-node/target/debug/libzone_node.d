@@ -1,1 +1,0 @@
-/home/niravsolanki/Desktop/Spatial\ DB\ /DB/zone-node/target/debug/libzone_node.rlib: /home/niravsolanki/Desktop/Spatial\ DB\ /DB/zone-node/src/lib.rs /home/niravsolanki/Desktop/Spatial\ DB\ /DB/zone-node/src/store.rs

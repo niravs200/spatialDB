@@ -22,4 +22,8 @@ impl Store {
     pub fn delete(&self, key: &str) {
         self.data.write().unwrap().remove(key);
     }
+
+    pub fn clear(&self) {
+        self.data.write().unwrap().clear();
+    }
 }

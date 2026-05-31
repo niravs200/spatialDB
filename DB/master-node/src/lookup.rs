@@ -1,70 +1,31 @@
-
 use std::sync::{Arc, RwLock};
 
-#[derive(Debug, Clone)]
-pub struct Coordinate {
-    x: i64,
-    y: i64,
-}
-
-impl Coordinate {
-    pub fn new(x: i64, y: i64) -> Self {
-        Self { x, y }
-    }
-
-    pub fn min(&self, other: &Self) -> Self {
-        Self {
-            x: self.x.min(other.x),
-            y: self.y.min(other.y),
-        }
-    }
-
-    pub fn max(&self, other: &Self) -> Self {
-        Self {
-            x: self.x.max(other.x),
-            y: self.y.max(other.y),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-struct BoundingBox {
-    pub min: Coordinate,
-    pub max: Coordinate,
-}
-
-impl BoundingBox {
-
-    pub fn new(min: Coordinate, max: Coordinate) -> Self {
-        Self { min, max }
-    }
-
-    fn contains(&self, point: &Coordinate) -> bool {
-        point.x >= self.min.x
-            && point.x <= self.max.x
-            && point.y >= self.min.y
-            && point.y <= self.max.y
-    }
-
-    fn intersects(&self, other: &BoundingBox) -> bool {
-        !(self.max.x < other.min.x
-            || self.min.x > other.max.x
-            || self.max.y < other.min.y
-            || self.min.y > other.max.y)
-    }
-}
+use crate::bound_box::{BoundingBox, Coordinate};
 
 #[derive(Debug, Clone)]
 pub struct Entry {
     bounds: BoundingBox,
     udp_port: u16,
     tcp_port: u16,
+    master_port: u16
 }
 
 impl Entry {
-    pub fn new(bounds: BoundingBox, udp_port: u16, tcp_port:u16) -> Self {
-        Self { bounds, udp_port, tcp_port }
+    pub fn new(bounds: BoundingBox, udp_port: u16, tcp_port:u16, master_port: u16) -> Self {
+        Self { bounds, udp_port, tcp_port, master_port }
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct EntryView {
+    pub udp_port: u16,
+    pub tcp_port: u16,
+}
+
+impl EntryView {
+    pub fn new(entry: &Entry) -> Self {
+        Self { udp_port: entry.udp_port, tcp_port: entry.tcp_port}
+    }   
 }
 
 pub struct LookupTable {
@@ -106,7 +67,7 @@ impl LookupTable {
         return true
     }
 
-    pub fn get(&self, coordinate: Coordinate) -> Option<Entry> {
+    pub fn get(&self, coordinate: Coordinate) -> Option<EntryView> {
         
         let bounds = self.bounds.read().unwrap();
         match &*bounds {
@@ -126,10 +87,21 @@ impl LookupTable {
             let entry = entry_lock.read().unwrap();
 
             if entry.bounds.contains(&coordinate) {
-                return Some(entry.clone())
+                return Some(EntryView::new(&entry));
             }
         }
 
         None
+    }
+
+    pub fn get_all_master_port(&self) -> Vec<u16> {
+        let mut master_ports = Vec::new();
+
+        for entry_lock in &self.entries {
+        let entry = entry_lock.read().unwrap();
+            master_ports.push(entry.master_port);
+        }
+
+        master_ports
     }
 }
