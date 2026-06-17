@@ -17,6 +17,15 @@ impl Entry {
 }
 
 #[derive(Debug, Clone)]
+pub struct AdjacentNodeInfo {
+    pub master_port: u16, 
+    pub north_port: Option<u16>, 
+    pub south_port: Option<u16>, 
+    pub east_port:  Option<u16>, 
+    pub west_port:  Option<u16>
+}
+
+#[derive(Debug, Clone)]
 pub struct EntryView {
     pub udp_port: u16,
     pub tcp_port: u16,
@@ -30,18 +39,87 @@ impl EntryView {
 
 pub struct LookupTable {
     entries: Vec<Arc<RwLock<Entry>>>,
-    bounds: Arc<RwLock<Option<BoundingBox>>>,
+    bounds: Arc<RwLock<BoundingBox>>,
 }
 
 impl LookupTable {
 
     pub fn new() -> Self {
-        Self { entries: Vec::new(), bounds: Arc::new(RwLock::new(None)) }
+        Self { entries: Vec::new(), bounds: Arc::new(RwLock::new(BoundingBox::zero())) }
+    }
+
+    pub fn adjacent_list(&self) -> Vec<AdjacentNodeInfo>{
+
+        let mut adjacent_list: Vec<AdjacentNodeInfo> = Vec::new();
+
+        let bounds = self.bounds.read().unwrap();
+
+
+
+        for entry in &self.entries {
+            let entry_guard = entry.read().unwrap();
+            let mut info = AdjacentNodeInfo {
+                master_port: entry_guard.master_port,
+                north_port: None,
+                south_port: None,
+                east_port: None,
+                west_port: None,
+            };
+
+            if entry_guard.bounds.min.x > bounds.min.x {
+                let neighbor = self.get(Coordinate {
+                    x: entry_guard.bounds.min.x - 1.0,
+                    y: entry_guard.bounds.min.y,
+                });
+
+                if let Some(entry) = neighbor {
+                    info.north_port = Some(entry.udp_port);
+                }
+            }
+
+            if entry_guard.bounds.max.x < bounds.max.x {
+                let neighbor = self.get(Coordinate {
+                    x: entry_guard.bounds.max.x + 1.0,
+                    y: entry_guard.bounds.max.y,
+                });
+
+                if let Some(entry) = neighbor {
+                    info.south_port = Some(entry.udp_port);
+                }
+            }
+
+            if entry_guard.bounds.min.y > bounds.min.y {
+                let neighbor = self.get(Coordinate {
+                    x: entry_guard.bounds.min.x,
+                    y: entry_guard.bounds.min.y - 1.0,
+                });
+
+                if let Some(entry) = neighbor {
+                    info.west_port = Some(entry.udp_port);
+                }
+            }
+
+            if entry_guard.bounds.max.y < bounds.max.y {
+                let neighbor = self.get(Coordinate {
+                    x: entry_guard.bounds.max.x,
+                    y: entry_guard.bounds.max.y + 1.0,
+                });
+
+                if let Some(entry) = neighbor {
+                    info.east_port = Some(entry.udp_port);
+                }
+            }
+            
+
+            adjacent_list.push(info);
+        } 
+
+        adjacent_list
     }
 
     pub fn delete_all(&mut self) {
         self.entries.clear();
-        self.bounds = Arc::new(RwLock::new(None));
+        self.bounds = Arc::new(RwLock::new(BoundingBox::zero()));
     }
 
     pub fn set(&mut self, new_entry: &Entry) -> bool {
@@ -56,13 +134,14 @@ impl LookupTable {
         self.entries.push(Arc::new(RwLock::new(new_entry.clone())));
         
         let mut bounds = self.bounds.write().unwrap();
-        *bounds = Some(match &*bounds {
-            Some(existing) => BoundingBox {
-                min: existing.min.min(&new_entry.bounds.min),
-                max: existing.max.max(&new_entry.bounds.max),
-            },
-            None => new_entry.bounds.clone(),
-        });
+        if bounds.is_zero() {
+            *bounds = new_entry.bounds.clone();
+        } else {
+            bounds.min.x = bounds.min.x.min(new_entry.bounds.min.x);
+            bounds.min.y = bounds.min.y.min(new_entry.bounds.min.y);
+            bounds.max.x = bounds.max.x.max(new_entry.bounds.max.x);
+            bounds.max.y = bounds.max.y.max(new_entry.bounds.max.y);
+        }
 
         return true
     }
@@ -70,17 +149,10 @@ impl LookupTable {
     pub fn get(&self, coordinate: Coordinate) -> Option<EntryView> {
         
         let bounds = self.bounds.read().unwrap();
-        match &*bounds {
-            Some(b) => {
-                if !b.contains(&coordinate) {
-                    println!("Coordinate is out of bound: {:?}", coordinate);
-                    return None
-                }
-            }
-            None => {
-                println!("No entries has been initiated");
-                return  None;
-            }
+
+        if *&bounds.contains(&coordinate) {
+            println!("Coordinate is out of bound: {:?}", coordinate);
+            return None
         }
 
         for entry_lock in &self.entries {

@@ -75,7 +75,9 @@ pub async fn spawn_servers(
 
         let entry = Entry::new(b, udp_port, tcp_port, master_port); 
         lookup_table.write().await.set(&entry);
-    } 
+    }
+    
+     
 
     Ok(())
 }

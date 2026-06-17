@@ -32,6 +32,20 @@ pub struct BoundingBox {
 
 impl BoundingBox {
 
+    pub fn zero() -> Self {
+        Self::new(
+            Coordinate { x: 0.0, y: 0.0 },
+            Coordinate { x: 0.0, y: 0.0 },
+        )
+    }
+
+    pub fn is_zero(&self) -> bool {
+        self.min.x == 0.0 &&
+        self.min.y == 0.0 &&
+        self.max.x == 0.0 &&
+        self.max.y == 0.0
+    }
+
     pub fn new(min: Coordinate, max: Coordinate) -> Self {
         Self { min, max }
     }
@@ -56,7 +70,7 @@ impl BoundingBox {
         (cols, row)
     }
 
-     pub fn divide_bound_box(&self, count: f64) -> Vec<BoundingBox> {
+    pub fn divide_bound_box(&self, count: f64) -> Vec<BoundingBox> {
         let (cols, rows) = Self::compute_grid(count);
 
         let width = self.max.x - self.min.x;
