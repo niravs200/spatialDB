@@ -1,5 +1,6 @@
-use crate::context::ServerContext;
-use crate::handle::{control_plane_handle, handle, quic_handle};
+use crate::context::{ReplicationContext, ServerContext};
+use crate::handle::{control_plane_handle, handle_request, replication_handle};
+use crate::metadata::Neighbors;
 use crate::store::Store;
 use std::io::Result;
 use std::sync::Arc;
@@ -42,19 +43,18 @@ pub async fn start_udp_server(server_context:ServerContext) -> Result<()> {
                     .trim()
                     .to_string();
 
-                let response = handle(store.clone(), &msg);
+                let response = handle_request(store.clone(), &msg);
                 socket.send_to(response.as_bytes(), &peer).await?;
             }
         }
     }
 }
 
-pub async fn start_tcp_server(server_context:ServerContext) -> Result<()> {
+pub async fn start_tcp_server(server_context:ServerContext, is_control: bool) -> Result<()> {
     let ServerContext {
         store, 
         shutting_down, 
         port, 
-        is_control
     } = server_context;
 
     let listener = TcpListener::bind(format!("127.0.0.1:{}",port)).await?;
@@ -64,7 +64,6 @@ pub async fn start_tcp_server(server_context:ServerContext) -> Result<()> {
         select! {
             _ = shutting_down.notified() => {
                 return Ok(());
-                
             }
 
             accept_result = listener.accept() => {
@@ -106,7 +105,7 @@ async fn handle_tcp_connection(socket: TcpStream, store: Arc<Store>, shutting_do
         let response = if is_control {
             control_plane_handle(msg, store.clone(), shutting_down.clone())
         } else {
-            handle(store.clone(), msg)
+            handle_request(store.clone(), msg)
         };
 
         writer.write_all(response.as_bytes()).await?;
@@ -138,6 +137,7 @@ fn configure_quic_server() -> ServerConfig {
 async fn handle_quic_connection(
     connection: Connection,
     store: Arc<Store>,
+    neighbors: Neighbors,
     shutting_down: Arc<Notify>,
 ) {
     println!("New QUIC connection established");
@@ -158,7 +158,7 @@ async fn handle_quic_connection(
                             Ok(Some(n)) => {
                                 let msg = String::from_utf8_lossy(&buf[..n]).trim().to_string();
 
-                                let response = quic_handle(store.clone(), &msg);
+                                let response = replication_handle(store.clone(), neighbors.clone(), &msg);
 
                                 if let Ok(mut send) = connection.open_uni().await {
                                     let _ = send.write_all(response.as_bytes()).await;
@@ -185,8 +185,9 @@ async fn handle_quic_connection(
     }
 }
 
-pub async fn start_quic_server(server_context: ServerContext) -> Result<()> {
-    let ServerContext { store, shutting_down, port, .. } = server_context;
+pub async fn start_quic_server(replication_context: ReplicationContext) -> Result<()> {
+    let ReplicationContext { base, neighbors } = replication_context;
+    let ServerContext { store, shutting_down, port, .. } = base;
 
     let addr = SocketAddr::new(
         IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
@@ -209,11 +210,12 @@ pub async fn start_quic_server(server_context: ServerContext) -> Result<()> {
             Some(connecting) = endpoint.accept() => {
                 let store = store.clone();
                 let shutdown = shutting_down.clone();
+                let neighbors = neighbors.clone(); 
 
                 tokio::spawn(async move {
                     match connecting.await {
                         Ok(connection) => {
-                            handle_quic_connection(connection, store, shutdown).await;
+                            handle_quic_connection(connection, store, neighbors, shutdown).await;
                         }
                         Err(e) => {
                             eprintln!("QUIC connection failed: {:?}", e);
