@@ -1,9 +1,9 @@
 use serde_json::Value;
 use std::sync::Arc;
-use crate::{metadata::Neighbors, store::Store};
+use crate::store::Store;
 use tokio::sync::Notify;
 
-pub fn handle_request(store: Arc<Store>, msg: &str) -> String {
+pub fn db_handle(store: Arc<Store>, msg: &str) -> String {
     let parts: Vec<&str> = msg.splitn(3, ' ').collect();
     
     if parts.is_empty() {
@@ -36,7 +36,7 @@ pub fn handle_request(store: Arc<Store>, msg: &str) -> String {
     }
 }
 
-pub fn replication_handle(store: Arc<Store>, neighbors: Neighbors, msg: &str) -> String {
+pub fn replication_handle(store: Arc<Store>, msg: &str) -> String {
     let parts: Vec<&str> = msg.splitn(3, ' ').collect();
     
     if parts.is_empty() {
@@ -44,8 +44,7 @@ pub fn replication_handle(store: Arc<Store>, neighbors: Neighbors, msg: &str) ->
     }
 
     match  parts[0].to_uppercase().as_str() {
-        "COPY" => {
-            //TODO proper logic needs to implemented to copy data over to neighbors port
+        "Replicate" => {
             let value: Value = serde_json::from_str(parts[2])
                 .unwrap_or(Value::String(parts[2].to_string()));
             store.set(parts[1].to_string(), value);

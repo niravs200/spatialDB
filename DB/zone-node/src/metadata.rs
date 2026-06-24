@@ -1,5 +1,8 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc, time::Duration};
+use quinn::Connection;
+use rustls::pki_types::CertificateDer;
 
+use crate::network::quic_connect;
 
 #[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
 pub enum Direction {
@@ -11,7 +14,9 @@ pub enum Direction {
 
 #[derive(Clone)]
 pub struct Neighbors {
-    map: HashMap<Direction, u16>,
+    ports: HashMap<Direction, u16>,
+    connections: HashMap<Direction, Arc<Connection>>,
+    cert: CertificateDer<'static>,
 }
 
 impl Neighbors {
@@ -20,10 +25,11 @@ impl Neighbors {
         south: Option<u16>,
         west: Option<u16>,
         east: Option<u16>,
+        cert: CertificateDer<'static>,
     ) -> Self {
-        let mut map = HashMap::new();
+        let mut ports = HashMap::new();
 
-        map.extend([
+        ports.extend([
             (Direction::North, north),
             (Direction::South, south),
             (Direction::West, west),
@@ -32,15 +38,50 @@ impl Neighbors {
             port.map(|p| (dir, p))
         }));
 
-        Self { map }
+        Self { 
+            ports,
+            connections: HashMap::new(),
+            cert
+        }
     }
 
-    pub fn set(&mut self, dir: Direction, port: u16) {
-        self.map.insert(dir, port);
+    pub fn set_port(&mut self, dir: Direction, port: u16) {
+        self.ports.insert(dir, port);
     }
 
-    pub fn get(&self, dir: Direction) -> Option<u16> {
-        self.map.get(&dir).copied()
+    pub fn get_port(&self, dir: Direction) -> Option<u16> {
+        self.ports.get(&dir).copied()
+    }
+
+    pub fn get_connection(&self, dir: Direction) -> Option<Arc<Connection>> {
+        self.connections.get(&dir).cloned()
+    }
+
+    pub fn set_connection(&mut self, dir: Direction, conn: Connection) {
+        self.connections.insert(dir, Arc::new(conn));
+    }
+
+    pub async fn connect_all(&mut self) {
+        for (dir, port) in &self.ports {
+            let mut retries = 10;
+            loop {
+                match quic_connect(*port, self.cert.clone()).await {
+                    Ok(conn) => {
+                        self.connections.insert(*dir, Arc::new(conn));
+                        println!("Connected to {:?} on port {}", dir, port);
+                        break;
+                    }
+                    Err(_) => {
+                        retries -= 1;
+                        if retries == 0 {
+                            eprintln!("{:?} unreachable, giving up", dir);
+                            break;
+                        }
+                        tokio::time::sleep(Duration::from_secs(1)).await;
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -81,6 +122,6 @@ impl Metadata {
     }
 
     pub fn neighbor_port(&self, dir: Direction) -> Option<u16> {
-        self.neighbors.get(dir)
+        self.neighbors.get_port(dir)
     }
 }
