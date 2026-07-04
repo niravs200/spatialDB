@@ -1,6 +1,6 @@
 use serde_json::Value;
 use std::sync::Arc;
-use crate::store::Store;
+use crate::{metadata::Metadata, store::Store};
 use tokio::sync::Notify;
 
 pub fn db_handle(store: Arc<Store>, msg: &str) -> String {
@@ -55,7 +55,7 @@ pub fn replication_handle(store: Arc<Store>, msg: &str) -> String {
     }
 }
 
-pub fn control_plane_handle(msg: &str, store: Arc<Store>, shutting_down: Arc<Notify>) -> String {
+pub fn control_plane_handle(msg: &str, store: Arc<Store>, metadata: Metadata, shutting_down: Arc<Notify>) -> String {
     let parts: Vec<&str> = msg.splitn(3, ' ').collect();
 
     if parts.is_empty() {
@@ -72,6 +72,10 @@ pub fn control_plane_handle(msg: &str, store: Arc<Store>, shutting_down: Arc<Not
 
         "PING" => "PONG".to_string(),
 
-        _ => "ERR unknown_command".to_string(),
+        "Metadata" => {
+            serde_json::to_string(&metadata.get_metadata())
+                .unwrap_or_else(|_| "ERR serialization_failed".to_string())
+        }
+   _ => "ERR unknown_command".to_string(),
     }
 }

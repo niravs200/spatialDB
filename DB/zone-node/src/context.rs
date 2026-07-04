@@ -56,6 +56,7 @@ impl Handler for ControlHandler {
         crate::handle::control_plane_handle(
             msg,
             store.clone(),
+            self.metadata.clone(),
             shutting_down.clone(),
         )
     }

@@ -1,6 +1,7 @@
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration, vec};
 use quinn::Connection;
 use rustls::pki_types::CertificateDer;
+use serde::Serialize;
 
 use crate::network::quic_connect;
 
@@ -53,6 +54,13 @@ impl Neighbors {
         self.ports.get(&dir).copied()
     }
 
+    pub fn get_ports(&self) -> Vec<(Direction, u16)> {
+        self.ports
+            .iter()
+            .map(|(dir, port)| (*dir, *port))
+            .collect()
+    }
+
     pub fn get_connection(&self, dir: Direction) -> Option<Arc<Connection>> {
         self.connections.get(&dir).cloned()
     }
@@ -94,6 +102,15 @@ pub struct Metadata {
     neighbors: Neighbors
 }
 
+#[derive(Serialize)]
+pub struct MetadataResponse {
+    pub client_port: u16,
+    pub realtime_port: u16,
+    pub control_port: u16,
+    pub quic_port: u16,
+    pub neighbors: Vec<(String, u16)>,
+}
+
 impl Metadata {
     pub fn new(client_port: u16, realtime_port: u16, control_port: u16, replication_port: u16, neighbors: Neighbors) -> Self {
         Self {
@@ -105,23 +122,18 @@ impl Metadata {
         }
     }
 
-    pub fn tcp_port(&self) -> u16 {
-        self.client_port
-    }
-
-    pub fn udp_port(&self) -> u16 {
-        self.realtime_port
-    }
-
-    pub fn control_port(&self) -> u16 {
-        self.control_port
-    }
-
-    pub fn quic_port(&self) -> u16 {
-        self.replication_port
-    }
-
-    pub fn neighbor_port(&self, dir: Direction) -> Option<u16> {
-        self.neighbors.get_port(dir)
+    pub fn get_metadata(&self) -> MetadataResponse {
+        MetadataResponse {
+            client_port: self.client_port,
+            realtime_port: self.realtime_port,
+            control_port: self.control_port,
+            quic_port: self.replication_port,
+            neighbors: self
+                .neighbors
+                .get_ports()
+                .into_iter()
+                .map(|(dir, port)| (format!("{:?}", dir), port))
+                .collect(),
+        }
     }
 }
