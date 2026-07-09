@@ -5,4 +5,3 @@ pub mod context;
 pub mod metadata;
 pub mod certificate;
 pub mod config;
-pub mod requests;

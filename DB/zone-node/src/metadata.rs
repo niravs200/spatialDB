@@ -1,6 +1,7 @@
-use std::{collections::HashMap};
+use std::{collections::HashMap, sync::{Arc, RwLock}};
 use rustls::pki_types::CertificateDer;
 use serde::Serialize;
+use uuid::Uuid;
 
 
 #[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
@@ -11,21 +12,11 @@ pub enum Direction {
     East,
 }
 
-impl Direction {
-    pub fn inverse(&self) -> Direction {
-        match self {
-            Direction::North => Direction::South,
-            Direction::South => Direction::North,
-            Direction::East => Direction::West,
-            Direction::West => Direction::East,
-        }
-    }
-}
-
 #[derive(Clone)]
 pub struct NeighborInfo {
     pub port: u16,
-    pub cert: CertificateDer<'static>,
+    pub _cert: CertificateDer<'static>,
+    pub id: Uuid
 }
 
 #[derive(Clone)]
@@ -48,6 +39,13 @@ impl Neighbors {
     pub fn get_all_neighbors(&self) -> HashMap<Direction, NeighborInfo> {
         self.entries.clone()
     }
+
+    pub fn find_direction_by_id(&self, target_uuid: &Uuid) -> Option<Direction> {
+        self.entries
+            .iter()
+            .find(|(_, info)| info.id == *target_uuid) // Changed info.node_id to info.id
+            .map(|(direction, _)| *direction)
+    }
 }
 
 #[derive(Clone)]
@@ -56,11 +54,13 @@ pub struct Metadata {
     realtime_port: u16,
     control_port: u16,
     replication_port: u16,
-    neighbors: Neighbors,
+    neighbors:  Arc<RwLock<Neighbors>>,
+    pub id: Uuid
 }
 
 #[derive(Serialize)]
 pub struct MetadataResponse {
+    pub id: Uuid,
     pub client_port: u16,
     pub realtime_port: u16,
     pub control_port: u16,
@@ -69,8 +69,9 @@ pub struct MetadataResponse {
 }
 
 impl Metadata {
-    pub fn new(client_port: u16, realtime_port: u16, control_port: u16, replication_port: u16, neighbors: Neighbors) -> Self {
+    pub fn new(id: Uuid, client_port: u16, realtime_port: u16, control_port: u16, replication_port: u16, neighbors: Arc<RwLock<Neighbors>>) -> Self {
         Self {
+            id,
             client_port,
             realtime_port,
             control_port,
@@ -80,13 +81,15 @@ impl Metadata {
     }
 
     pub fn get_metadata(&self) -> MetadataResponse {
+        let neighbors = self.neighbors.read();
+
         MetadataResponse {
+            id: self.id,
             client_port: self.client_port,
             realtime_port: self.realtime_port,
             control_port: self.control_port,
             quic_port: self.replication_port,
-            neighbors: self
-                .neighbors
+            neighbors: neighbors.unwrap()
                 .get_all_ports()
                 .into_iter()
                 .map(|(dir, port)| (format!("{:?}", dir), port))
@@ -94,11 +97,13 @@ impl Metadata {
         }
     }
 
-    // pub fn get_all_ports(&self) -> HashMap<Direction, u16> {
-    //     self.neighbors.get_all_ports()
-    // }
-
     pub fn get_all_neighbors(&self) -> HashMap<Direction, NeighborInfo> {
-        self.neighbors.get_all_neighbors()
+        let neighbors = self.neighbors.read().unwrap();
+
+        neighbors.get_all_neighbors()
+    }
+
+    pub fn find_direction_by_id(&self, target_uuid: &Uuid) -> Option<Direction> {
+        self.neighbors.read().unwrap().find_direction_by_id(target_uuid)
     }
 }

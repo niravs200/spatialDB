@@ -5,17 +5,15 @@ mod context;
 mod metadata;
 mod certificate;
 mod config;
-mod requests;
 
-use std::{collections::HashMap, sync::Arc};
+use std::{sync::{Arc, RwLock}};
 use std::io::Result;
 use std::fs;
 use tokio::sync::Notify;
 use store::Store;
 use network::{start_tcp_server, start_udp_server, start_quic_server};
 use context::{ServerContext, ClientHandler, ControlHandler, RealtimeHandler, NeighborConnections};
-use crate::metadata::NeighborInfo;
-use crate::{certificate::{ReplicationCredentials, parse_cert, parse_key}, context::ReplicationHandler, metadata::{Direction, Metadata, Neighbors}};
+use crate::{certificate::{ReplicationCredentials, parse_cert, parse_key}, config::extract_runtime_neighbors, context::{ReplicationHandler}, metadata::Metadata, network::{establish_replication_mesh}};
 use config::Config;
 
 #[tokio::main]
@@ -50,7 +48,14 @@ async fn main() -> Result<()> {
         key: quic_key,
     });
 
-    let neighbors = extract_neighbors_info(&config)?;
+    let initial_neighbors = extract_runtime_neighbors(&config.neighbors)
+        .expect("Failed to initialize topology map from configuration certs");
+
+    let neighbors = Arc::new(
+        RwLock::new(
+            initial_neighbors
+        )
+    );
 
     let realtime_server_context =
         ServerContext::new(store.clone(), shutting_down.clone(), config.realtime_port);
@@ -65,55 +70,38 @@ async fn main() -> Result<()> {
     
     
     let neighbor_connections = NeighborConnections::new();
-    let control_handler = ControlHandler { 
-        metadata: Metadata::new(
+    let replication_server_context = 
+        ServerContext::new(store.clone(), shutting_down.clone(), config.replication_port);
+    let metadata = Metadata::new(
+            config.id,        
             config.client_port, 
             config.realtime_port, 
             config.control_port, 
             config.replication_port, 
-            neighbors.clone()
-        ),
+            neighbors
+    );
+    let control_handler = ControlHandler { 
+        metadata: metadata.clone(),
         neighbor_connections: neighbor_connections.clone(),
     };
-
-    let replication_server_context = 
-        ServerContext::new(store.clone(), shutting_down.clone(), config.replication_port);
-    let replication_handler = ReplicationHandler {
-        neighbor_connections: neighbor_connections.clone(),
-    };
+    let replication_handler = ReplicationHandler;
+    let replication_mesh_context = ServerContext::new(store.clone(), shutting_down.clone(), 0);
 
     tokio::spawn(start_udp_server(realtime_server_context, realtime_handler));
     tokio::spawn(start_tcp_server(client_server_context, client_handler));
     tokio::spawn(start_tcp_server(control_server_context, control_handler));
-    tokio::spawn(start_quic_server(replication_server_context, replication_handler, replication_credentials.clone(), neighbor_connections));
-
+    tokio::spawn(start_quic_server(replication_server_context, replication_handler.clone(), replication_credentials.clone(), neighbor_connections.clone(), metadata.clone()));
+    tokio::spawn(async move {
+        if let Err(e) = establish_replication_mesh(
+            replication_mesh_context,
+            metadata.clone(),
+            neighbor_connections.clone(),
+            replication_handler,
+        ).await {
+            eprintln!("Critical failure in replication mesh supervisor: {:?}", e);
+        }
+    });
     shutting_down.notified().await;
 
     Ok(())
-}
-
-fn extract_neighbors_info(config: &Config) -> Result<Neighbors> {
-    let mut entries = HashMap::new();
-
-    for (direction, neighbor_config) in [
-        (Direction::North, &config.neighbors.north),
-        (Direction::South, &config.neighbors.south),
-        (Direction::East, &config.neighbors.east),
-        (Direction::West, &config.neighbors.west),
-    ] {
-        let cert = match parse_cert(neighbor_config.certificate.as_bytes()) {
-            Ok(c) => c,
-            Err(e) => {
-                eprintln!("Invalid certificate for {:?}: {e}", direction);
-                return Err(e);
-            }
-        };
-
-        entries.insert(direction, NeighborInfo {
-            port: neighbor_config.port,
-            cert
-        });
-    }
-
-    Ok(Neighbors::new(entries))
 }

@@ -68,12 +68,17 @@ impl NeighborConnections {
         let mut connections = self.connections.write().unwrap();
         connections.insert(direction, connection);
     }
+
+    pub fn get(&self, direction: Direction) -> Option<Connection> {
+        let connections = self.connections.read().unwrap();
+        connections.get(&direction).cloned()
+    }
 }
 
 #[derive(Clone)]
 pub struct ControlHandler {
     pub metadata: Metadata,
-    pub neighbor_connections: NeighborConnections 
+    pub neighbor_connections: NeighborConnections,
 }
 
 #[async_trait]
@@ -90,16 +95,13 @@ impl Handler for ControlHandler {
 }
 
 #[derive(Clone)]
-pub struct ReplicationHandler {
-    pub neighbor_connections: NeighborConnections 
-}
+pub struct ReplicationHandler;
 
 #[async_trait]
 impl Handler for ReplicationHandler {
     async fn handle(&self, msg: &str, store: Arc<Store>, _shutting_down: Arc<Notify>) -> String {
         crate::handle::replication_handle(
             store.clone(),
-            self.neighbor_connections.clone(),
             msg,
         )
     }
