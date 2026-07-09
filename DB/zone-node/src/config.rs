@@ -23,18 +23,28 @@ pub struct Config {
     pub quic_private_key: String,
 }
 
+
 #[derive(Debug, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct Neighbors {
-    #[validate(range(min = 1, max = 65535))]
-    pub north_port: u16,
+    #[validate(nested)]
+    pub north: NeighborConfig,
 
-    #[validate(range(min = 1, max = 65535))]
-    pub south_port: u16,
+    #[validate(nested)]
+    pub south: NeighborConfig,
 
-    #[validate(range(min = 1, max = 65535))]
-    pub east_port: u16,
+    #[validate(nested)]
+    pub east: NeighborConfig,
 
+    #[validate(nested)]
+    pub west: NeighborConfig,
+}
+
+#[derive(Debug, Deserialize, Validate)]
+#[serde(deny_unknown_fields)]
+pub struct NeighborConfig {
     #[validate(range(min = 1, max = 65535))]
-    pub west_port: u16,
+    pub port: u16,
+
+    pub certificate: String,
 }

@@ -1,5 +1,6 @@
-use crate::certificate::pinned_verifier;
-use crate::context::{Handler, ServerContext};
+use crate::certificate::{ReplicationCredentials, pinned_verifier};
+use crate::context::{Handler, NeighborConnections, ServerContext};
+use crate::requests::get_neighbor_direction;
 use crate::store::Store;
 use std::io::{Error, ErrorKind, Result};
 use std::sync::Arc;
@@ -9,7 +10,7 @@ use tokio::sync::Notify;
 use std::str::from_utf8;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use quinn::{ClientConfig, Endpoint, ServerConfig};
-use rustls::pki_types::{CertificateDer, PrivateKeyDer};
+use rustls::pki_types::{CertificateDer};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use quinn::Connection;
 
@@ -49,7 +50,7 @@ where
                     .to_string();
  
                 let response = handler.handle(&msg, store, shutting_down);
-                socket.send_to(response.as_bytes(), &peer).await?;
+                socket.send_to(response.await.as_bytes(), &peer).await?;
             }
         }
     }
@@ -113,7 +114,7 @@ where
         let msg = line.trim();
         let response = handler.handle(msg, store.clone(), shutting_down.clone());
 
-        writer.write_all(response.as_bytes()).await?;
+        writer.write_all(response.await.as_bytes()).await?;
         writer.write_all(b"\n").await?;
 
     }
@@ -121,8 +122,8 @@ where
     Ok(())
 }
 
-pub fn configure_quic_server(cert: CertificateDer<'static>, key: PrivateKeyDer<'static>) -> Result<ServerConfig> {
-    let mut server_config = ServerConfig::with_single_cert(vec![cert], key)
+pub fn configure_quic_server(replication_credentials: Arc<ReplicationCredentials>) -> Result<ServerConfig> {
+    let mut server_config = ServerConfig::with_single_cert(vec![replication_credentials.cert.clone()], replication_credentials.key.clone_key())
         .map_err(|e| Error::new(ErrorKind::Other, format!("quinn server config error: {e}")))?;
 
     Arc::get_mut(&mut server_config.transport)
@@ -136,7 +137,7 @@ async fn handle_quic_connection<H>(
     connection: Connection,
     store: Arc<Store>,
     shutting_down: Arc<Notify>,
-    handler: H
+    handler: H,
 ) where 
     H: Handler
 {
@@ -164,7 +165,7 @@ async fn handle_quic_connection<H>(
                                     let msg = String::from_utf8_lossy(&buf[..n]).trim().to_string();
                                     let response = handler.handle(&msg, store, shutting_down);
                                     
-                                    if let Err(e) = send.write_all(response.as_bytes()).await {
+                                    if let Err(e) = send.write_all(response.await.as_bytes()).await {
                                         eprintln!("QUIC write error: {:?}", e);
                                     }
                                     if let Err(e) = send.finish() {
@@ -193,8 +194,8 @@ async fn handle_quic_connection<H>(
 pub async fn start_quic_server<H>(
     server_context: ServerContext,
     handler: H,
-    cert: CertificateDer<'static>,
-    key: PrivateKeyDer<'static>,
+    replication_credentials: Arc<ReplicationCredentials>,
+    neighbor_connections: NeighborConnections
 ) -> Result<()> 
 where 
     H: Handler + Clone + Send + 'static,
@@ -202,7 +203,7 @@ where
     let port = server_context.port;
     let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port);
 
-    let server_config = configure_quic_server(cert, key)?;
+    let server_config = configure_quic_server(replication_credentials)?;
     let endpoint = Endpoint::server(server_config, addr)?;
 
     println!("QUIC server listening on {}", addr);
@@ -211,6 +212,7 @@ where
         let store = server_context.store.clone();
         let shutdown = server_context.shutting_down.clone();
         let handler = handler.clone();
+        let neighbor_connections = neighbor_connections.clone();
 
         tokio::select! {
             _ = shutdown.notified() => {
@@ -222,7 +224,26 @@ where
                 tokio::spawn(async move {
                     match connecting.await {
                         Ok(connection) => {
-                            handle_quic_connection(connection, store, shutdown, handler).await;
+                            let direction = match get_neighbor_direction(connection.clone()).await {
+                            Ok(direction) => direction,
+
+                            Err(e) => {
+                                eprintln!("Failed to get neighbor direction: {}", e);
+                                return;
+                            }
+                        };
+
+                        neighbor_connections
+                            .set(direction, connection.clone());
+
+                        handle_quic_connection(
+                            connection,
+                            store,
+                            shutdown,
+                            handler,
+                        )
+                        .await;
+
                         }
                         Err(e) => {
                             eprintln!("QUIC connection failed: {:?}", e);
@@ -281,7 +302,7 @@ pub async fn quic_connect(
     Ok(connection)
 }
 
-pub async fn quic_send(conn: &Connection, msg: &str) -> Result<String> {
+pub async fn _quic_send(conn: &Connection, msg: &str) -> Result<String> {
     let (mut send, mut recv) = conn
         .open_bi()
         .await

@@ -5,15 +5,17 @@ mod context;
 mod metadata;
 mod certificate;
 mod config;
+mod requests;
 
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 use std::io::Result;
 use std::fs;
 use tokio::sync::Notify;
 use store::Store;
-use network::{start_quic_server, start_tcp_server, start_udp_server};
-use context::{ServerContext, ClientHandler, ControlHandler, RealtimeHandler, ReplicationHandler};
-use crate::{certificate::{parse_cert, parse_key}, metadata::{Metadata, Neighbors}};
+use network::{start_tcp_server, start_udp_server, start_quic_server};
+use context::{ServerContext, ClientHandler, ControlHandler, RealtimeHandler, NeighborConnections};
+use crate::metadata::NeighborInfo;
+use crate::{certificate::{ReplicationCredentials, parse_cert, parse_key}, context::ReplicationHandler, metadata::{Direction, Metadata, Neighbors}};
 use config::Config;
 
 #[tokio::main]
@@ -43,13 +45,12 @@ async fn main() -> Result<()> {
             return Err(e);
         }
     };
-    let neighbors =  Neighbors::new(
-        Some(config.neighbors.north_port),
-        Some(config.neighbors.south_port),
-        Some(config.neighbors.west_port),
-        Some(config.neighbors.east_port),
-        quic_cert.clone()
-    );
+    let replication_credentials = Arc::new(ReplicationCredentials {
+        cert: quic_cert,
+        key: quic_key,
+    });
+
+    let neighbors = extract_neighbors_info(&config)?;
 
     let realtime_server_context =
         ServerContext::new(store.clone(), shutting_down.clone(), config.realtime_port);
@@ -61,20 +62,58 @@ async fn main() -> Result<()> {
 
     let control_server_context = 
         ServerContext::new(store.clone(), shutting_down.clone(), config.control_port);
-    let control_handler = ControlHandler{ metadata: Metadata::new(config.client_port, config.realtime_port, config.control_port, config.replication_port, neighbors.clone())};
-           
-    let replication_server_context =
-        ServerContext::new(store.clone(),shutting_down.clone(), config.replication_port);
-    let replication_handler = ReplicationHandler;
+    
+    
+    let neighbor_connections = NeighborConnections::new();
+    let control_handler = ControlHandler { 
+        metadata: Metadata::new(
+            config.client_port, 
+            config.realtime_port, 
+            config.control_port, 
+            config.replication_port, 
+            neighbors.clone()
+        ),
+        neighbor_connections: neighbor_connections.clone(),
+    };
 
-
+    let replication_server_context = 
+        ServerContext::new(store.clone(), shutting_down.clone(), config.replication_port);
+    let replication_handler = ReplicationHandler {
+        neighbor_connections: neighbor_connections.clone(),
+    };
 
     tokio::spawn(start_udp_server(realtime_server_context, realtime_handler));
     tokio::spawn(start_tcp_server(client_server_context, client_handler));
     tokio::spawn(start_tcp_server(control_server_context, control_handler));
-    tokio::spawn(start_quic_server(replication_server_context, replication_handler, quic_cert, quic_key));
+    tokio::spawn(start_quic_server(replication_server_context, replication_handler, replication_credentials.clone(), neighbor_connections));
 
     shutting_down.notified().await;
 
     Ok(())
+}
+
+fn extract_neighbors_info(config: &Config) -> Result<Neighbors> {
+    let mut entries = HashMap::new();
+
+    for (direction, neighbor_config) in [
+        (Direction::North, &config.neighbors.north),
+        (Direction::South, &config.neighbors.south),
+        (Direction::East, &config.neighbors.east),
+        (Direction::West, &config.neighbors.west),
+    ] {
+        let cert = match parse_cert(neighbor_config.certificate.as_bytes()) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("Invalid certificate for {:?}: {e}", direction);
+                return Err(e);
+            }
+        };
+
+        entries.insert(direction, NeighborInfo {
+            port: neighbor_config.port,
+            cert
+        });
+    }
+
+    Ok(Neighbors::new(entries))
 }

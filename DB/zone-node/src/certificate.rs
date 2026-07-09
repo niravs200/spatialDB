@@ -5,6 +5,13 @@ use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, Server
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, ServerName, UnixTime};
 use rustls::{CertificateError, DigitallySignedStruct, DistinguishedName, Error as RustlsError, SignatureScheme};
 
+
+pub struct ReplicationCredentials {
+    pub cert: CertificateDer<'static>,
+    pub key: PrivateKeyDer<'static>,
+}
+
+
 pub fn parse_cert(bytes: &[u8]) -> IoResult<CertificateDer<'static>> {
     rustls_pemfile::certs(&mut &bytes[..])
         .next()
@@ -21,7 +28,6 @@ pub fn parse_key(bytes: &[u8]) -> IoResult<PrivateKeyDer<'static>> {
         .and_then(|k| PrivateKeyDer::try_from(k.secret_pkcs8_der().to_vec())
             .map_err(|e| Error::new(ErrorKind::InvalidData, e)))
 }
-
 
 pub fn pinned_verifier(expected_cert: CertificateDer<'static>) -> Arc<dyn ServerCertVerifier> {
     #[derive(Debug)]
