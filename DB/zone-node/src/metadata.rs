@@ -15,7 +15,7 @@ pub enum Direction {
 #[derive(Clone)]
 pub struct NeighborInfo {
     pub port: u16,
-    pub _cert: CertificateDer<'static>,
+    pub cert: CertificateDer<'static>,
     pub id: Uuid
 }
 

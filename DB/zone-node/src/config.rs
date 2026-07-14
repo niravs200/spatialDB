@@ -78,28 +78,28 @@ pub fn extract_runtime_neighbors(config_neighbors: &Neighbors) -> Result<Runtime
     entries.insert(Direction::North, NeighborInfo {
         id: config_neighbors.north.id,
         port: config_neighbors.north.port,
-        _cert: north_cert,
+        cert: north_cert,
     });
 
     let south_cert = parse_cert(config_neighbors.south.quic_certificate.as_bytes())?;
     entries.insert(Direction::South, NeighborInfo {
         id: config_neighbors.south.id,
         port: config_neighbors.south.port,
-        _cert: south_cert,
+        cert: south_cert,
     });
 
     let east_cert = parse_cert(config_neighbors.east.quic_certificate.as_bytes())?;
     entries.insert(Direction::East, NeighborInfo {
         id: config_neighbors.east.id,
         port: config_neighbors.east.port,
-        _cert: east_cert,
+        cert: east_cert,
     });
 
     let west_cert = parse_cert(config_neighbors.west.quic_certificate.as_bytes())?;
     entries.insert(Direction::West, NeighborInfo {
         id: config_neighbors.west.id,
         port: config_neighbors.west.port,
-        _cert: west_cert,
+        cert: west_cert,
     });
 
     Ok(RuntimeNeighbors::new(entries))

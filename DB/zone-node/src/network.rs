@@ -397,7 +397,7 @@ where
     for (direction, info) in all_neighbors {
         if info.id < my_id {
             let port = info.port;
-            let cert = info._cert.clone();
+            let cert = info.cert.clone();
 
             let neighbor_connections = neighbor_connections.clone();
             let store = server_context.store.clone();

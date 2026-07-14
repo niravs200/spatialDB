@@ -44,7 +44,7 @@ pub fn replication_handle(store: Arc<Store>, msg: &str) -> String {
     }
 
     match  parts[0].to_uppercase().as_str() {
-        "Replicate" => {
+        "REPLICATE" => {
             let value: Value = serde_json::from_str(parts[2])
                 .unwrap_or(Value::String(parts[2].to_string()));
             store.set(parts[1].to_string(), value);
