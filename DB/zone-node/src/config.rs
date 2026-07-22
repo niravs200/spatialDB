@@ -35,16 +35,16 @@ pub struct Config {
 #[serde(deny_unknown_fields)]
 pub struct Neighbors {
     #[validate(nested)]
-    pub north: NeighborConfig,
+    pub north: Option<NeighborConfig>,
 
     #[validate(nested)]
-    pub south: NeighborConfig,
+    pub south: Option<NeighborConfig>,
 
     #[validate(nested)]
-    pub east: NeighborConfig,
+    pub east: Option<NeighborConfig>,
 
     #[validate(nested)]
-    pub west: NeighborConfig,
+    pub west: Option<NeighborConfig>,
 }
 
 #[derive(Debug, Deserialize, Validate)]
@@ -74,33 +74,45 @@ fn validate_is_pem_wrapper(cert_str: &str) -> std::result::Result<(), Validation
 pub fn extract_runtime_neighbors(config_neighbors: &Neighbors) -> Result<RuntimeNeighbors> {
     let mut entries = HashMap::new();
 
-    let north_cert = parse_cert(config_neighbors.north.quic_certificate.as_bytes())?;
-    entries.insert(Direction::North, NeighborInfo {
-        id: config_neighbors.north.id,
-        port: config_neighbors.north.port,
-        cert: north_cert,
-    });
+    if let Some(north) = &config_neighbors.north {
+        let cert = parse_cert(north.quic_certificate.as_bytes())?;
 
-    let south_cert = parse_cert(config_neighbors.south.quic_certificate.as_bytes())?;
-    entries.insert(Direction::South, NeighborInfo {
-        id: config_neighbors.south.id,
-        port: config_neighbors.south.port,
-        cert: south_cert,
-    });
+        entries.insert(Direction::North, Some(NeighborInfo {
+            id: north.id,
+            port: north.port,
+            cert,
+        }));
+    }
 
-    let east_cert = parse_cert(config_neighbors.east.quic_certificate.as_bytes())?;
-    entries.insert(Direction::East, NeighborInfo {
-        id: config_neighbors.east.id,
-        port: config_neighbors.east.port,
-        cert: east_cert,
-    });
+    if let Some(south) = &config_neighbors.south {
+        let cert = parse_cert(south.quic_certificate.as_bytes())?;
 
-    let west_cert = parse_cert(config_neighbors.west.quic_certificate.as_bytes())?;
-    entries.insert(Direction::West, NeighborInfo {
-        id: config_neighbors.west.id,
-        port: config_neighbors.west.port,
-        cert: west_cert,
-    });
+        entries.insert(Direction::South, Some(NeighborInfo {
+            id: south.id,
+            port: south.port,
+            cert,
+        }));
+    }
+
+    if let Some(east) = &config_neighbors.east {
+        let cert = parse_cert(east.quic_certificate.as_bytes())?;
+
+        entries.insert(Direction::East, Some(NeighborInfo {
+            id: east.id,
+            port: east.port,
+            cert,
+        }));
+    }
+
+    if let Some(west) = &config_neighbors.west {
+        let cert = parse_cert(west.quic_certificate.as_bytes())?;
+
+        entries.insert(Direction::West, Some(NeighborInfo {
+            id: west.id,
+            port: west.port,
+            cert,
+        }));
+    }
 
     Ok(RuntimeNeighbors::new(entries))
 }

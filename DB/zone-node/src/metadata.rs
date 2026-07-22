@@ -21,30 +21,30 @@ pub struct NeighborInfo {
 
 #[derive(Clone)]
 pub struct Neighbors {
-    entries: HashMap<Direction, NeighborInfo>,
+    entries: HashMap<Direction, Option<NeighborInfo>>,
 }
 
 impl Neighbors {
-    pub fn new(entries: HashMap<Direction, NeighborInfo>) -> Self {
+    pub fn new(entries: HashMap<Direction, Option<NeighborInfo>>) -> Self {
         Self { entries }
     }
 
-    pub fn get_all_ports(&self) -> HashMap<Direction, u16> {
+    pub fn get_all_ports(&self) -> HashMap<Direction, Option<u16>> {
         self.entries
             .iter()
-            .map(|(dir, info)| (*dir, info.port))
+            .map(|(&dir, info)| (dir, info.as_ref().map(|i| i.port)))
             .collect()
     }
 
-    pub fn get_all_neighbors(&self) -> HashMap<Direction, NeighborInfo> {
+    pub fn get_all_neighbors(&self) -> HashMap<Direction, Option<NeighborInfo>> {
         self.entries.clone()
     }
 
     pub fn find_direction_by_id(&self, target_uuid: &Uuid) -> Option<Direction> {
         self.entries
             .iter()
-            .find(|(_, info)| info.id == *target_uuid) // Changed info.node_id to info.id
-            .map(|(direction, _)| *direction)
+            .find(|(_, info)| info.as_ref().is_some_and(|i| i.id == *target_uuid))
+            .map(|(&direction, _)| direction)
     }
 }
 
@@ -65,7 +65,7 @@ pub struct MetadataResponse {
     pub realtime_port: u16,
     pub control_port: u16,
     pub quic_port: u16,
-    pub neighbors: Vec<(String, u16)>,
+    pub neighbors: Vec<(String, Option<u16>)>,
 }
 
 impl Metadata {
@@ -81,7 +81,7 @@ impl Metadata {
     }
 
     pub fn get_metadata(&self) -> MetadataResponse {
-        let neighbors = self.neighbors.read();
+        let neighbors = self.neighbors.read().unwrap();
 
         MetadataResponse {
             id: self.id,
@@ -89,15 +89,15 @@ impl Metadata {
             realtime_port: self.realtime_port,
             control_port: self.control_port,
             quic_port: self.replication_port,
-            neighbors: neighbors.unwrap()
+            neighbors: neighbors
                 .get_all_ports()
                 .into_iter()
-                .map(|(dir, port)| (format!("{:?}", dir), port))
+                .map(|(dir, port)| (format!("{:?}", dir), port)) // `port` is now `Option<u16>`
                 .collect(),
         }
-    }
+    }   
 
-    pub fn get_all_neighbors(&self) -> HashMap<Direction, NeighborInfo> {
+    pub fn get_all_neighbors(&self) -> HashMap<Direction, Option<NeighborInfo>> {
         let neighbors = self.neighbors.read().unwrap();
 
         neighbors.get_all_neighbors()

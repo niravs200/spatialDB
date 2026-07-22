@@ -395,6 +395,7 @@ where
     let all_neighbors = metadata.get_all_neighbors();
 
     for (direction, info) in all_neighbors {
+        let Some(info) = info else { continue };
         if info.id < my_id {
             let port = info.port;
             let cert = info.cert.clone();
